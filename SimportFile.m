@@ -12,13 +12,16 @@ classdef SimportFile < handle
     
     methods
         function obj = SimportFile(varargin)
-            obj.FileName = varargin{1};
+            if nargin>0
+                obj.FileName = varargin{1};
+            end
         end
     end
     
     methods (Abstract)
-        td = LoadData(obj, varnames);
-        varobjs = GetVarObjects(obj, varargin);
+        LoadData(obj, varnames);
+        varobj = GetVar(obj,varname);
+        UpdateVarObjects(obj, varargin);
     end
     
 end

@@ -2,7 +2,7 @@ classdef SimportVariable < handle
     properties
         Name
         FileName
-        Interpolation = true
+        InterpMethod = 'linear' % zoh, linear, message
         Dimension
         SampleRate
         Descriptor
@@ -10,6 +10,8 @@ classdef SimportVariable < handle
         
         Time
         Data
+        
+        UserData
     end
     
     properties (Dependent = true)
@@ -19,7 +21,7 @@ classdef SimportVariable < handle
         function obj = SimportVariable(varargin)
             [obj.Name, ...
              obj.FileName, ...
-             obj.Interpolation, ...
+             obj.InterpMethod, ...
              obj.Dimension, ...
              obj.SampleRate, ...
              obj.Descriptor] = deal(varargin{:});
@@ -30,7 +32,7 @@ classdef SimportVariable < handle
                 if ~isempty(obj(i).Time) && isempty(obj(i).SampleRate)
                     tsteps = diff(obj(i).Time);
                     st = mean(tsteps);
-                    if st>0&&(std(t_intvs)/st<0.2)
+                    if st>0&&(std(tsteps)/st<0.2)
                         obj(i).SampleRate = round(st*10000)/10000;
                     else
                         obj(i).SampleRate = -1;

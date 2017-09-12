@@ -67,7 +67,7 @@ end
 % initialize other infos
 handles.HiliteBlocks = [];
 handles.VarTable = cell(0,3); % {name, fileidx, varobj}
-handles.DataFiles = [];
+handles.DataFiles = {};
 % Update handles structure
 guidata(hObject, handles);
 
@@ -171,15 +171,22 @@ if nargin<2
     mode = 'add';
 end
 if ~strcmp(mode, 'add')
-    handles.DataFiles=[];
-    handles.VarTable=[];
+    handles.DataFiles={};
+    handles.VarTable={};
 end
 if isfield(handles,'DefaultDir')
     defaultdir=handles.DefaultDir;
 else
     defaultdir=pwd;
 end
-[filename,pathname]=uigetfile({'*.mdf;*.dat;*.ascii;*.xls;*.xlsx;*.vsb'},'Select the files to read',defaultdir,'MultiSelect','on');
+[filename, pathname] = uigetfile( ...
+    {'*.mdf;*.dat','MDF Logging File(*.mdf;*.dat)'; ...
+    '*.blf;*asc','Vector CAN Binary Log File(*.blf) or ASC log(*.asc)'; ...
+    '*.vsb;*csv','Interpidcs Vehicle Spy Binary(*.vsb) or CSV log(*.csv)'; ...
+    '*.log','BusMaster CAN Log File(*.log)';
+    '*.dbc','Vector CANdb database(*.dbc)';}, ...
+    'Select data file(s) to import', ...
+    'MultiSelect', 'on');
 if ~iscell(filename)&&~ischar(filename)
     return;
 else
@@ -192,19 +199,9 @@ filename=cellstr(strcat(pathname,filename));
 for i=1:numel(filename)
     [~,NAME,EXT]=fileparts(filename{i});
     waitbar(i/numel(filename),hwaitbar,sprintf('Processing %s',[NAME EXT]));
-    if strcmpi(EXT,'.ascii')
-        
-    elseif strcmpi(EXT,'.xls')||strcmpi(EXT,'.xlsx')
-        
-    elseif strcmpi(EXT,'.mdf')||strcmpi(EXT,'.dat')
-        flobj = SimportFileMDF(filename{i});
-    elseif strcmpi(EXT,'.vsb')
-        
-    else
-        
-    end
+    flobj = simport_filedispatcher(filename{i});
     % update and store file information
-    handles.DataFiles = [handles.DataFiles; flobj];
+    handles.DataFiles = [handles.DataFiles; {flobj}];
     tmpvartable = flobj.VarList;
     [tmpvartable{:,2}] = deal(numel(handles.DataFiles));
     tmpvartable(:,3) = arrayfun(@(a)a, flobj.VarObjects, 'UniformOutput', false);
@@ -243,7 +240,7 @@ if eventdata.Indices(2)==3
     tbldata=get(handles.listtable,'data');
     varobj = getvarobject(eventdata.EditData, handles.VarTable);
     infostr = getdescriptor(varobj);
-    [tbldata{eventdata.Indices(1),[1,4]}]= deal(infostr, varobj.Interpolation);
+    [tbldata{eventdata.Indices(1),[1,4]}]= deal(infostr, strcmp(varobj.InterpMethod, 'linear'));
     set(handles.listtable,'data',tbldata);
 end
 
@@ -322,7 +319,7 @@ filesel = unique(fileidx);
 for i=1:numel(filesel)
     % waitbar
     subvarobjs = varobjs(fileidx==filesel(i)); % get variables from the same file
-    handles.DataFiles(filesel(i)).LoadData({subvarobjs.Name});
+    handles.DataFiles{filesel(i)}.LoadData({subvarobjs.Name});
 end
 
 
@@ -341,7 +338,7 @@ else
 end
 % process time range
 trngs = vertcat(currvarobjs.TimeRange);
-tstart = max(trngs(:,1));tend = max(trngs(:,2));
+tstart = min(trngs(:,1));tend = max(trngs(:,2));
 if get(handles.tRangeEn,'Value')
     t1=str2double(get(handles.edit_tStart,'String'));
     t2=str2double(get(handles.edit_tEnd,'String'));
@@ -360,11 +357,13 @@ end
 tsarr = [];
 tref = tstart:st:tend; % uniform time
 for i=1:numel(currvarobjs)
-    tstmp = timeseries(currvarobjs(i).Data, currvarobjs(i).Time, 'Name', currvarobjs(i).Name);
-    if currvarobjs(i).Interpolation
-        tstmp = tstmp.setinterpmethod('zoh');
-        tstmp = tstmp.resample(tref, 'zoh');
+    if ~isempty(currvarobjs(i).Data)
+        tstmp = timeseries(currvarobjs(i).Data, currvarobjs(i).Time, 'Name', currvarobjs(i).Name);
     else
+        tstmp = timeseries(zeros(numel(currvarobjs(i).Time),1), currvarobjs(i).Time, 'Name', currvarobjs(i).Name);
+    end
+    tstmp = tstmp.setinterpmethod(currvarobjs(i).InterpMethod);
+    if tstmp.Length>1
         tstmp = tstmp.resample(tref);
     end
     tsarr=[tsarr; tstmp];
@@ -373,7 +372,17 @@ end
 % Set output dataype of all inports to double
 inports=find_system(bdroot(gcs),'FindAll','on','SearchDepth',1,'BlockType','Inport');
 for i=1:numel(inports)
-    set_param(inports(i),'OutDataTypeStr',class(tsarr(i).Data));
+    if islogical(tsarr(i).Data)
+        set_param(inports(i),'OutDataTypeStr','boolean');
+    else
+        set_param(inports(i),'OutDataTypeStr',class(tsarr(i).Data));
+    end
+    set_param(inports(i),'PortDimensions',int2str(size(tsarr(i).Data,2)));
+    if strcmp(tsarr(i).getinterpmethod, 'linear')
+        set_param(inports(i),'Interpolate', 'on');
+    else
+        set_param(inports(i),'Interpolate', 'off');
+    end
 end
 %Set model configuration
 cfg=getActiveConfigSet(handles.CurrentModel);
@@ -557,20 +566,20 @@ for i=1:numel(inports)
     idxmatch = strcmp(portname,varlist);
     if any(idxmatch)
         varobj = getvarobject(portname, vartable);
-        tbldata{i,1}=['<=>', getdescriptor(varobj)];
+        tbldata{i,1}=['#', getdescriptor(varobj)];
         if sum(idxmatch)>1
             tbldata{i,3}=[portname, '@1']; % select 1st by default if multiple variable exist
         else
             tbldata{i,3}=portname;
         end
-        tbldata{i,4}=varobj.Interpolation;
+        tbldata{i,4}=strcmp(varobj.InterpMethod, 'linear');
         handles.HiliteBlocks = [handles.HiliteBlocks; inports(i)];
         hilite_system(inports(i),'find');
     else
     end
 end
 set(handles.listtable,'Data',tbldata);
-if all(strncmp(tbldata(:,1),'<=>',3))
+if all(strncmp(tbldata(:,1),'#',3))
     fprintf(2, '##Simport: All ports auto-matched with variables in data file.\n');
 end
 guidata(handles.Simport, handles);

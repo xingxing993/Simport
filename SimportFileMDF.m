@@ -13,7 +13,7 @@ classdef SimportFileMDF < SimportFile
             [obj.MDFsummary, obj.MDFstructure, obj.counts, channelList]=mdfinfo(obj.FileName);
             channelList(:,1)=strtok(channelList(:,1),'\');
             obj.channelList=channelList;
-            obj.VarObjects = obj.GetVarObjects;
+            obj.UpdateVarObjects;
             obj.VarList = {obj.VarObjects.Name}';
         end
     end
@@ -50,21 +50,23 @@ classdef SimportFileMDF < SimportFile
             varobj = obj.VarObjects(strcmp(obj.VarList, varname));
         end
         
-        %% GetVarList
-        function varlist = GetVarObjects(obj, varargin)
+        %% UpdateVarObjects
+        function UpdateVarObjects(obj, varargin)
             tmpidx = strncmp(obj.channelList(:,1),'$',1) | strcmp(obj.channelList(:,1),'time'); % find those start with '$' or 'time'
             validchannels = obj.channelList(~tmpidx,:);
-            varlist = [];
+            varobjs = [];
+            interpmethod = {'zoh','linear'};
             for i=1:size(validchannels, 1)
-                varlist = [varlist; ...
+                varobjs = [varobjs; ...
                     SimportVariable(...
                     validchannels{i,1},... %name
                     obj.FileName,...
-                    validchannels{i,8}>0,... % interpolation
+                    interpmethod{(validchannels{i,8}>0)+1},... % interpolation method
                     1,... % dimension
                     validchannels{i,5},... %sample rate
                     'MDF')];
             end
+            obj.VarObjects = varobjs;
         end
     end
 

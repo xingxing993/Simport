@@ -1,0 +1,5 @@
+releases/
+*.asv
+*.autosave
+_demo/
+_debug/
