@@ -17,6 +17,9 @@ classdef SimportFileDBC < SimportFile
             % create signal list with message id stored for each
             for i=1:numel(obj.dbcInfo.Message)
                msgsigs =  [obj.dbcInfo.Message(i).Signals]';
+               if isempty(msgsigs)
+                   continue;
+               end
                [msgsigs.MsgID] = deal(obj.dbcInfo.Message(i).ID);
                obj.SignalList = [obj.SignalList; msgsigs];
             end
@@ -96,7 +99,7 @@ classdef SimportFileDBC < SimportFile
                         bitshift(uint8(255), siginfo.StartBit),...
                         bitshift(uint8(255), siginfo.StartBit+siginfo.SignalSize-8)...
                         );
-                    sigrawval = bitand(msgdata(:,startbyte+1), bitmsk);
+                    sigrawval = double(bitand(msgdata(:,startbyte+1), bitmsk));
                 else
                     msgdata(:,[1:startbyte, (startbyte+1+nbytes):end]) = []; % remove unnecessary data
                     validbitdigit = 8*ones(1, size(msgdata,2));

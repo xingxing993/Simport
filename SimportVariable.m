@@ -48,5 +48,11 @@ classdef SimportVariable < handle
                 trng = [obj.Time(1), obj.Time(end)];
             end
         end
+        
+        function plot(obj)
+            figure;
+            plot(obj.Time, obj.Data);
+            title(obj.Name);
+        end
     end
 end
