@@ -1,11 +1,11 @@
-classdef SimportFileDBC < SimportFile
+classdef SimportFileDBC < SimportCANFile
 % CSV Format assumption in this script:
 % 1. all hex value are in upper case
 % 2. message data all have 2-digits hex value
     
     properties
-        DataFile %SimoportFile object
-        SignalList = []
+        DataFileName
+        dbcSignalList = []
         dbcInfo
     end
     
@@ -21,7 +21,7 @@ classdef SimportFileDBC < SimportFile
                    continue;
                end
                [msgsigs.MsgID] = deal(obj.dbcInfo.Message(i).ID);
-               obj.SignalList = [obj.SignalList; msgsigs];
+               obj.dbcSignalList = [obj.dbcSignalList; msgsigs];
             end
             if nargin<2
                 [datafilename, datafilepath] = uigetfile( ...
@@ -36,9 +36,7 @@ classdef SimportFileDBC < SimportFile
             else
                 datafile = varargin{2};
             end
-            obj.DataFile = simport_filedispatcher(datafile);
-            obj.UpdateVarObjects;
-            obj.VarList = {obj.VarObjects.Name}';
+            obj.AttachDataFile(datafile);
         end
        %% GetVar
         function varobjs = GetVar(obj, varnames)
@@ -48,77 +46,82 @@ classdef SimportFileDBC < SimportFile
         end
         %% GetVarList
         function UpdateVarObjects(obj, varargin)
+            datafileobj = varargin{1};
             varobjs = [];
             interpmethod = {'zoh','linear'};
-            for i=1:numel(obj.SignalList)
+            for i=1:numel(obj.dbcSignalList)
                 sigobj = SimportVariable(...
-                    obj.SignalList(i).Name,... %name
+                    obj.dbcSignalList(i).Name,... %name
                     obj.FileName,...
-                    interpmethod{(obj.SignalList(i).SignalSize<5)+1},... % interpolation method, consider num of bits<5 as boolean or enumeration signals
+                    interpmethod{(obj.dbcSignalList(i).SignalSize<5)+1},... % interpolation method, consider num of bits<5 as boolean or enumeration signals
                     1,... % dimension
                     [],... %sample rate
                     'DBC');
                 sigobj.UserData.Type = 'dbc Signal';
-                sigobj.UserData.Message = ['0x',dec2hex(obj.SignalList(i).MsgID)];
-                sigobj.UserData.dbcInfo = obj.SignalList(i);
+                sigobj.UserData.Message = ['0x',dec2hex(obj.dbcSignalList(i).MsgID)];
+                sigobj.UserData.dbcInfo = obj.dbcSignalList(i);
                 varobjs = [varobjs; sigobj];
             end
             [varobjs.Descriptor] = deal('CAN_DBC');
             % merge dbc file and data file signals
-            obj.VarObjects = [varobjs;obj.DataFile.VarObjects];
+            obj.VarObjects = [varobjs;datafileobj.VarObjects];
         end
         %%
-        function LoadData(obj, varnames)
+        function LoadData(obj, varnames, reloadflg, channel)
+            if nargin<4
+                channel = [];
+            end
+            if nargin<3
+                reloadflg = false;
+            end
             varnames = cellstr(varnames);
             % first load can raw message signals involved
             canmsgidx = strncmp(varnames, '0x', 2); % split CAN raw message signals, dbc signal cannot start with number
-            obj.DataFile.LoadData(varnames(canmsgidx));
+            LoadData@SimportCANFile(obj, varnames(canmsgidx), false, channel);
             % then process dbc signals
             dbcsigs = varnames(~canmsgidx);
             % first load message to prepare data
             varobjs = GetVar(obj, dbcsigs);
-            dbcrelativemsgs = unique(arrayfun(@(v)v.UserData.Message, varobjs, 'UniformOutput', false));
-            obj.DataFile.LoadData(dbcrelativemsgs);
-            fun_intel2motorola_bitpos = @(intelpos)floor(intelpos/8)*16+7-intelpos; % convert start bit to Byte0-Bit7, and end bit to Byte7-Bit0
+            varrelativemsgs = unique(arrayfun(@(v)v.UserData.Message, varobjs, 'UniformOutput', false));
+            LoadData@SimportCANFile(obj,varrelativemsgs, false, channel);
+            % begin to convert message data to physical value
+            fun_intel2motorola_lsbbit = @(intelpos)floor(intelpos/8)*16+7-intelpos; % convert start bit to Byte0-Bit7, and end bit to Byte7-Bit0
+            fun_getmotorola_msbbit = @(lsbbit,sz) (lsbbit+sz-1)-2*(floor((lsbbit+sz-1)/8)-floor(lsbbit/8))*8;
             for i=1:numel(varobjs)
-%                 if ~isempty(varobjs(i).Data)
-%                     continue;
-%                 end
+                if ~isempty(varobjs(i).Time) && ~reloadflg % if already loaded, return
+                    continue;
+                end
                 siginfo = varobjs(i).UserData.dbcInfo;
                 msgvarobj = obj.GetVar(varobjs(i).UserData.Message);
                 msgdata = uint8(msgvarobj.Data); % must be uint8 type
-                % CONVERT TO PHYSICAL VALUE
-                if mod(siginfo.SignalSize,8)==0 && mod(siginfo.StartBit,8)~=0
-                    nbytes = ceil(siginfo.SignalSize/8)+1;
-                else
-                    nbytes = ceil(siginfo.SignalSize/8);
+                if siginfo.ByteOrder==1  % intel format, high byte MSB (seems the definitoin in the DBC format specification file is wrong)
+                    lsbbit = siginfo.StartBit; % start bit is lsb for intel format
+                    msbbit = lsbbit+siginfo.SignalSize-1;
+                else % motorola format, low byte MSB
+                    % translate to different bit sequence system to
+                    % facilitate later calculation
+                    lsbbit = fun_intel2motorola_lsbbit(siginfo.StartBit);
+                    msbbit = fun_getmotorola_msbbit(lsbbit, siginfo.SignalSize);
                 end
-                startbyte = floor(siginfo.StartBit/8); % zero index
+                
+                % CONVERT TO PHYSICAL VALUE
+                nbytes = abs(floor(msbbit/8)-floor(lsbbit/8))+1;
+                startbyte = floor(siginfo.StartBit/8); % zero based index
                 if nbytes==1 % use original info for signal in one byte
-                    bitmsk = bitand(...
-                        bitshift(uint8(255), siginfo.StartBit),...
-                        bitshift(uint8(255), siginfo.StartBit+siginfo.SignalSize-8)...
-                        );
-                    sigrawval = double(bitand(msgdata(:,startbyte+1), bitmsk));
+                    sigrawval = double(bitshift(...
+                        bitand(msgdata(:,startbyte+1), bitshift(uint8(255), mod(msbbit,8)-7))...
+                            , -1*mod(lsbbit,8)));
                 else
                     msgdata(:,[1:startbyte, (startbyte+1+nbytes):end]) = []; % remove unnecessary data
                     validbitdigit = 8*ones(1, size(msgdata,2));
-                    if siginfo.ByteOrder==1  % intel format, high byte MSB (seems the definitoin in the DBC format specification file is wrong)
-                        startbit = siginfo.StartBit; % start bit is lsb for intel format
-                    else % motorola format, low byte MSB
-                        % translate to different bit sequence system to
-                        % facilitate later calculation
-                        startbit = fun_intel2motorola_bitpos(siginfo.StartBit);
-                    end
-                    endbit = startbit+siginfo.SignalSize-1;
-                    validbitdigit(1)=8-mod(startbit, 8);
-                    validbitdigit(end)=mod(endbit, 8)+1;
+                    validbitdigit(1)=8-mod(lsbbit, 8);
+                    validbitdigit(end)=mod(msbbit, 8)+1;
                     if siginfo.ByteOrder==0 % motorola
                         msgdata = fliplr(msgdata);
                         validbitdigit = fliplr(validbitdigit);
                     end
                     tmppwrdigit = [0, validbitdigit(1:end-1)];
-                    pwrdigit = arrayfun(@(n)sum(tmppwrdigit(1:n)), 1:numel(tmppwrdigit)); % bit weight
+                    pwrdigit = cumsum(tmppwrdigit); % bit weight
                     msgdata(:,1) = bitshift(msgdata(:,1), validbitdigit(1)-8);
                     msgdata(:,end) = bitand(msgdata(:,end), bitshift(uint8(255), validbitdigit(end)-8));
                     sigrawval = double(msgdata)*(2.^pwrdigit)';
@@ -129,6 +132,26 @@ classdef SimportFileDBC < SimportFile
                 varobjs(i).Data = sigval;
             end
         end
+       %%
+        function AttachDataFile(obj, datafile)
+            obj.DataFileName = datafile;
+            datafileobj = simport_filedispatcher(datafile);
+            % manual copy properties
+            obj.MsgCount = datafileobj.MsgCount;
+            obj.MsgID = datafileobj.MsgID;
+            obj.TimeStamp = datafileobj.TimeStamp;
+            obj.DLC = datafileobj.DLC;
+            obj.Data = datafileobj.Data;
+            obj.StartTime = datafileobj.StartTime;
+            obj.EndTime = datafileobj.EndTime;
+            % merge variable objects and list
+            obj.UpdateVarObjects(datafileobj);
+            obj.VarList = {obj.VarObjects.Name}';
+        end
+    end
+    
+    methods
+        
     end
 
 end
