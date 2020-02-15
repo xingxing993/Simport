@@ -1,4 +1,7 @@
-function release_Simport
+function release_Simport(mversion)
+if nargin<1
+    mversion = false;
+end
 if ~isdir('releases')
     mkdir('releases');
 end
@@ -6,13 +9,14 @@ rtdir = pwd;
 packdir = ['.\releases\Simport_V', datestr(now, 'yyyymmddHHMM')];
 copy_exlist = {
     'releases',
+    'document',
     '^_demo',
     '^_debug',
     '^release_',
     '^\.git',
     '\.asv$',
     '^sfun_.*\.c'};
-pcode_exlist = {'whichtorun','mdfinfo','mdfread'};
+pcode_exlist = {'whichtorun','mdfinfo','mdfread','zlibdecode'};
 
 
 mkdir(packdir);
@@ -25,9 +29,13 @@ for i=1:numel(df)
         copyfile(df(i).name, fullfile(packdir, df(i).name));
     end
 end
+
 cd(packdir);
-pfolder(pwd, pcode_exlist);
+if ~mversion
+    pfolder(pwd, pcode_exlist);
+end
 cd('..');
+
 % zip file
 [~, packname] = fileparts(packdir);
 zip(packname, packname);

@@ -20,7 +20,10 @@ classdef SimportFileMDF < SimportFile
     
     methods
         %% GetData
-        function LoadData(obj, varnames)
+        function LoadData(obj, varnames, reloadflg)
+            if nargin<3
+                reloadflg = false;
+            end
             varnames = cellstr(varnames);
             [coexistvars, ia] = intersect(obj.channelList(:,1), varnames);
             if isempty(coexistvars)
@@ -40,7 +43,10 @@ classdef SimportFileMDF < SimportFile
                 subvars = chinfo(subidx, 1);
                 for k=1:numel(subvars)
                     varobj = obj.GetVar(subvars{k});
-                    varobj.Time = (tmpdatas{1}+obj.TimeOffset)*obj.TimeGain;
+                    if ~isempty(varobj.Time) && ~reloadflg % if already loaded, return
+                        continue;
+                    end
+                    varobj.Time = (tmpdatas{1}-tmpdatas{1}(1)*obj.ZeroStart)*obj.TimeGain + obj.TimeOffset;
                     varobj.Data = tmpdatas{k+1};
                 end
             end

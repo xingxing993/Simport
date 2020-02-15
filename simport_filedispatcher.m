@@ -1,7 +1,7 @@
 function flobj = simport_filedispatcher(filename, varargin)
 [~,~,EXT]=fileparts(filename);
 % return SimportFile object
-switch EXT
+switch lower(EXT)
     case {'.mdf', '.dat'}
         flobj = SimportFileMDF(filename);
     case '.vsb'

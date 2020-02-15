@@ -36,7 +36,7 @@ classdef SimportFileVSB < SimportCANFile
                     wtbarproc = ftell(fid)/fileinfo.bytes;
                     wtbcnt = 0;
                     if wtbarproc-wtbprev>0.01 % to reduce waitbar refresh frequency save resource
-                        waitbar(wtbarproc, hwtbar, 'Processing...');
+                        waitbar(wtbarproc, hwtbar, ['Processing...', fileinfo.name]);
                         wtbprev = wtbarproc;
                     end
                 end
@@ -50,13 +50,10 @@ classdef SimportFileVSB < SimportCANFile
             fclose(fid);
             % data post process
             obj.TimeStamp = double(vsbbuf(:,1:8))*(2.^(0:8:56)')*TIME_UNIT;
-            obj.TimeStamp = obj.TimeStamp-obj.TimeStamp(1);% note the offset to zero operation
             obj.MsgID = double(vsbbuf(:,10:13))*(2.^(0:8:24)');
             obj.DLC = vsbbuf(:,9);
             obj.Data = vsbbuf(:,14:21);
             obj.MsgCount = numel(obj.MsgID);
-            obj.StartTime = obj.TimeStamp(1);
-            obj.EndTime = obj.TimeStamp(end);
 
             close(hwtbar);
         end

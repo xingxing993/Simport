@@ -33,7 +33,7 @@ classdef SimportFileBMLOG < SimportCANFile
                     wtbarproc = ftell(fid)/fileinfo.bytes;
                     wtbcnt = 0;
                     if wtbarproc-wtbprev>0.01 % to reduce waitbar refresh frequency save resource
-                        waitbar(wtbarproc*0.9, hwtbar, 'Processing...');
+                        waitbar(wtbarproc*0.9, hwtbar, ['Processing...', fileinfo.name]);
                         wtbprev = wtbarproc;
                     end
                 end
@@ -60,16 +60,12 @@ classdef SimportFileBMLOG < SimportCANFile
             bufcell(msgcnt+1:end,:)=[]; % remove unused buffer
             
             obj.TimeStamp = cellfun(@(tstr)datevec(datenum(tstr, 'HH:MM:SS:FFF'))*[0 0 0 3600 60 1]', bufcell(:,1));
-            obj.TimeStamp = obj.TimeStamp-obj.TimeStamp(1);% note the offset to zero operation
             obj.MsgID = cellfun(@(idstr)h2dMsgID(strrep(idstr,'0x','')), bufcell(:,2));
             obj.DLC = cellfun(@(idstr)uint8(str2double(idstr)), bufcell(:,3));
             dbytes = bufcell(:,4:11);
             [dbytes{cellfun('isempty', dbytes)}] = deal('00');
             obj.Data = uint8(cellfun(@h2dXX, dbytes));
             obj.MsgCount = numel(obj.MsgID);
-            obj.StartTime = obj.TimeStamp(1);
-            obj.EndTime = obj.TimeStamp(end);
-
             close(hwtbar);
         end
     end

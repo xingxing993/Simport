@@ -22,7 +22,7 @@ function varargout = Simport(varargin)
 
 % Edit the above text to modify the response to help Simport
 
-% Last Modified by GUIDE v2.5 04-Sep-2017 17:48:47
+% Last Modified by GUIDE v2.5 13-Sep-2017 23:30:46
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -104,6 +104,8 @@ else
     end
     figresize(handles,rowcnt);
     set(handles.listtable,'Data',tbldata);
+    set(handles.dispinfo,'String',...
+        sprintf('Model:  %s',get_param(handles.CurrentModel,'Name')));
 end
 
 
@@ -239,6 +241,9 @@ function listtable_CellEditCallback(hObject, eventdata, handles)
 if eventdata.Indices(2)==3
     tbldata=get(handles.listtable,'data');
     varobj = getvarobject(eventdata.EditData, handles.VarTable);
+    if isempty(varobj)
+        return;
+    end
     infostr = getdescriptor(varobj);
     [tbldata{eventdata.Indices(1),[1,4]}]= deal(infostr, strcmp(varobj.InterpMethod, 'linear'));
     set(handles.listtable,'data',tbldata);
@@ -286,7 +291,7 @@ else
         'SelectionMode','single',...
         'ListString',mdls);
     if v
-        handles.CurrentModel = s;
+        handles.CurrentModel = mdls{s};
         refresh_model(handles, 'normal');
         guidata(hObject, handles);
     end
@@ -410,6 +415,10 @@ function setmodelcfg_ClickedCallback(hObject, eventdata, handles)
 % hObject    handle to setmodelcfg (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
+if isempty(handles.DataFiles)
+    msgbox('No data file has been loaded.');
+    return;
+end
 cfgmodel_general(handles);
 msgbox('Off-line Simulink context has been established using test data','Completed');
 
@@ -541,13 +550,13 @@ function listtable_ButtonDownFcn(hObject, eventdata, handles)
 
 
 % --------------------------------------------------------------------
-function btn_help_ClickedCallback(hObject, eventdata, handles)
-% hObject    handle to btn_help (see GCBO)
+function btn_cfg_ClickedCallback(hObject, eventdata, handles)
+% hObject    handle to btn_cfg (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
 % path=fileparts(mfilename('fullpath'));
 % open([path,'\Simport Guideline.pdf']);
-msgbox(sprintf('Simport V1.0\nPlease contact jiangxinauto@163.com in case of any bug'));
+SimportConfigFile(handles.DataFiles);
 
 
 function sych_portname_with_varname(handles)
@@ -590,12 +599,12 @@ function updatecal_inca_ClickedCallback(hObject, eventdata, handles)
 % hObject    handle to updatecal_inca (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-NF_INCA=UpdateCalsByINCA(GetAllCalibrations(gcs));
+NF_INCA=SyncINCA(GetCalibrationVars(gcs));
 if ~isempty(NF_INCA)
-    wrnmsg=[{'The following calibrations not found in INCA:'};{NF_INCA.CalName}'];
+    wrnmsg=[{'The following variables not found as calibration value in INCA:'};{NF_INCA.CalName}'];
     warndlg(wrnmsg);
-    fprintf('\nThe following calibrations not found in INCA\n');
-    fprintf('%s\n',NF_INCA.CalName);
+    fprintf(2, '\n#Simport# The following variables not found as calibration value in INCA\n');
+    fprintf(2, '#Simport# %s\n',NF_INCA.CalName);
 end
 
 

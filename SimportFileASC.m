@@ -43,7 +43,7 @@ classdef SimportFileASC < SimportCANFile
                     wtbarproc = ftell(fid)/fileinfo.bytes;
                     wtbcnt = 0;
                     if wtbarproc-wtbprev>0.01 % to reduce waitbar refresh frequency save resource
-                        waitbar(wtbarproc*0.9, hwtbar, 'Processing...');
+                        waitbar(wtbarproc*0.9, hwtbar, ['Processing...',fileinfo.name]);
                         wtbprev = wtbarproc;
                     end
                 end
@@ -81,7 +81,6 @@ classdef SimportFileASC < SimportCANFile
                     obj.TimeStamp(i) = obj.TimeStamp(i-1)+obj.TimeStamp(i);
                 end
             else % absolute
-                obj.TimeStamp = obj.TimeStamp-obj.TimeStamp(1);% note the offset to zero operation
             end
             waitbar(0.93, hwtbar, 'Post processing...');
             obj.MsgID = cellfun(@(idstr)h2dMsgID(strrep(idstr,'x','')), bufcell(:,2));
@@ -93,10 +92,7 @@ classdef SimportFileASC < SimportCANFile
             obj.Data = uint8(cellfun(@h2dXX, dbytes));
             waitbar(0.98, hwtbar, 'Post processing...');
             obj.MsgCount = numel(obj.MsgID);
-            obj.StartTime = obj.TimeStamp(1);
-            obj.EndTime = obj.TimeStamp(end);
             waitbar(1, hwtbar, 'Post processing...');
-
             close(hwtbar);
         end
     end

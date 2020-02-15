@@ -48,7 +48,7 @@ classdef SimportFileCSV < SimportCANFile
                     wtbarproc = ftell(fid)/fileinfo.bytes;
                     wtbcnt = 0;
                     if wtbarproc-wtbprev>0.01 % to reduce waitbar refresh frequency save resource
-                        waitbar(wtbarproc*0.9, hwtbar, 'Processing...');
+                        waitbar(wtbarproc*0.9, hwtbar, ['Processing...', fileinfo.name]);
                         wtbprev = wtbarproc;
                     end
                 end
@@ -70,8 +70,6 @@ classdef SimportFileCSV < SimportCANFile
             
             
             obj.TimeStamp = cellfun(@str2double, bufcell(:,1));
-            waitbar(0.92, hwtbar, 'Post processing...');
-            obj.TimeStamp = obj.TimeStamp-obj.TimeStamp(1);% note the offset to zero operation
             waitbar(0.93, hwtbar, 'Post processing...');
             obj.MsgID = cellfun(@(idstr)h2dMsgID(idstr), bufcell(:,2));
             waitbar(0.94, hwtbar, 'Post processing...');
@@ -82,8 +80,6 @@ classdef SimportFileCSV < SimportCANFile
             obj.Data = uint8(cellfun(@h2dXX, dbytes));
             waitbar(0.98, hwtbar, 'Post processing...');
             obj.MsgCount = numel(obj.MsgID);
-            obj.StartTime = obj.TimeStamp(1);
-            obj.EndTime = obj.TimeStamp(end);
             waitbar(1, hwtbar, 'Post processing...');
 
             close(hwtbar);

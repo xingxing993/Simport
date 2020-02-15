@@ -54,5 +54,10 @@ classdef SimportVariable < handle
             plot(obj.Time, obj.Data);
             title(obj.Name);
         end
+        
+        function Resample(obj, newtimearr, varargin)
+            obj.Data = interp1(obj.Time, obj.Data, newtimearr, varargin{:});
+            obj.Time = newtimearr;
+        end
     end
 end
