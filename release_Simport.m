@@ -15,6 +15,7 @@ copy_exlist = {
     '^release_',
     '^\.git',
     '\.asv$',
+    '\.autosave$',
     '^sfun_.*\.c'};
 pcode_exlist = {'whichtorun','mdfinfo','mdfread','zlibdecode'};
 
