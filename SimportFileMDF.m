@@ -55,7 +55,11 @@ classdef SimportFileMDF < SimportFile
                 % Use MATLAB built-in "mdf" to process file, better format
                 % support, but only available after R2016b
                 obj.MDFFileObj = mdf(obj.FileName);
-                ch_struarr = vertcat(obj.MDFFileObj.ChannelGroup.Channel); %channel array struct
+                try
+                    ch_struarr = vertcat(obj.MDFFileObj.ChannelGroup.Channel); %channel array struct
+                catch % mdfobj.ChannelGroup have different shape on different MATLAB versions
+                    ch_struarr = horzcat(obj.MDFFileObj.ChannelGroup.Channel); %channel array struct
+                end
                 obj.MDFVarTable = cell(numel(ch_struarr), 5);
                 obj.MDFVarTable(:,[1,3,end]) = repmat({ch_struarr.Name}',1,3);
                 % Fill in channel group number
