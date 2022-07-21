@@ -66,7 +66,7 @@ end
 
 % initialize other infos
 handles.HiliteBlocks = [];
-handles.VarTable = cell(0,3); % {name, fileidx, varobj}
+handles.VarTable = cell(0,3); % {name, fileidx, varobj}, an virutal column 4(channel) embedded in varobj.Channel
 handles.DataFiles = {};
 % Update handles structure
 guidata(hObject, handles);
@@ -217,6 +217,7 @@ guidata(handles.Simport, handles);
 function update_dropdownlist(handles)
 %Set selection list
 colformat=get(handles.listtable,'ColumnFormat');
+coledit=get(handles.listtable,'ColumnEditable');
 varlist = handles.VarTable(:,1);
 if numel(unique(varlist))<numel(varlist)
     dispvarlist = cellfun(@(name, idx)sprintf('%s@%u', name, idx), handles.VarTable(:,1), handles.VarTable(:,2), 'UniformOutput', false);
@@ -224,7 +225,18 @@ else
     dispvarlist = varlist;
 end
 colformat{3}=sort(dispvarlist)';
-set(handles.listtable,'ColumnFormat',colformat);
+% channel information
+chnlstrs = cellfun(@(v) num2str(v.Channel), handles.VarTable(:,3), 'UniformOutput', false);
+chnlstr_unq=unique(chnlstrs)';
+chnlstr_unq(cellfun('isempty', chnlstr_unq)) = [];
+if isempty(chnlstr_unq)
+    colformat{5} = {'--'};
+    coledit(end) = false;
+else
+    colformat{5} = chnlstr_unq;
+    coledit(end) = true;
+end
+set(handles.listtable,'ColumnFormat',colformat, 'ColumnEditable', coledit);
 %
 
 
@@ -245,9 +257,37 @@ if eventdata.Indices(2)==3
         return;
     end
     infostr = getdescriptor(varobj);
-    [tbldata{eventdata.Indices(1),[1,4]}]= deal(infostr, strcmp(varobj.InterpMethod, 'linear'));
+    [tbldata{eventdata.Indices(1),[1,4,5]}]= deal(infostr, strcmp(varobj.InterpMethod, 'linear'), num2str(varobj.Channel));
     set(handles.listtable,'data',tbldata);
 end
+if eventdata.Indices(2)==5
+    tbldata=get(handles.listtable,'data');
+    varobj = getvarobject(tbldata{eventdata.Indices(1), 3}, handles.VarTable);
+    if isempty(varobj)
+        return;
+    end
+    avail_chnls = varobj.UserData.Channels;
+    if iscellstr(avail_chnls) %string type channel
+        if ~ismember(eventdata.EditData, avail_chnls)
+            warndlg('Signal doesn''t exist on selected channel');
+            tbldata{eventdata.Indices(1), eventdata.Indices(2)} = eventdata.PreviousData;
+            set(handles.listtable,'data',tbldata);
+            return;
+        end
+        varobj.Channel = eventdata.EditData;
+    else %numeric type
+        if ~ismember(str2double(eventdata.EditData), avail_chnls)
+            warndlg('Signal doesn''t exist on selected channel');
+            tbldata{eventdata.Indices(1), eventdata.Indices(2)} = eventdata.PreviousData;
+            set(handles.listtable,'data',tbldata);
+            return;
+        end
+        varobj.Channel = str2double(eventdata.EditData);
+    end
+    
+end
+
+
 
 function infostr = getdescriptor(varobj)
 if varobj.Dimension>1 %if necessary suffix additional dimension info [n]
@@ -270,7 +310,9 @@ else
         varidx = strcmp(varname, vartable(:,1));
     end
     if ~any(varidx)
-        error('Simport: Failed to find variable "%s" in imported data file', varname);
+        varobj=[];fileindex = [];
+        return;
+%         error('Simport: Failed to find variable "%s" in imported data file', varname);
     else
         varobj = vartable{varidx, end};
         fileindex = vartable{varidx, 2};
@@ -324,7 +366,8 @@ filesel = unique(fileidx);
 for i=1:numel(filesel)
     % waitbar
     subvarobjs = varobjs(fileidx==filesel(i)); % get variables from the same file
-    handles.DataFiles{filesel(i)}.LoadData({subvarobjs.Name});
+    chnlspec = {subvarobjs.Channel};
+    handles.DataFiles{filesel(i)}.LoadData({subvarobjs.Name}, false, chnlspec);
 end
 
 
@@ -343,7 +386,7 @@ else
 end
 % process time range
 trngs = vertcat(currvarobjs.TimeRange);
-tstart = min(trngs(:,1));tend = max(trngs(:,2));
+tstart = max(trngs(:,1));tend = min(trngs(:,2));
 if get(handles.tRangeEn,'Value')
     t1=str2double(get(handles.edit_tStart,'String'));
     t2=str2double(get(handles.edit_tEnd,'String'));
@@ -582,6 +625,7 @@ for i=1:numel(inports)
             tbldata{i,3}=portname;
         end
         tbldata{i,4}=strcmp(varobj.InterpMethod, 'linear');
+        tbldata{i,5}=num2str(varobj.Channel);
         handles.HiliteBlocks = [handles.HiliteBlocks; inports(i)];
         hilite_system(inports(i),'find');
     else

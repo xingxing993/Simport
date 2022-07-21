@@ -48,7 +48,7 @@ for i=1:total
                 val_inca_raw=get_raw_incaval(calel_inca);
             end
         case 'Z'
-            val_inca_raw=get_raw_incaval(calel_inca);
+            val_inca_raw=get_raw_incaval(calel_inca)';
         otherwise
             val_inca_raw=get_raw_incaval(calel_inca);
     end
@@ -103,9 +103,13 @@ end
 function alias_list = get_alias_list(rawname)
 % return alias_list with N*2 size cell matrix, each row represents {'ALIASNAME', 'ALIASTYPE'}
 alias_list={};
-if ~isempty(regexp(rawname, '_?[XYZ]$')) % If end with 'X','Y','Z'
+if ~isempty(regexp(rawname, '_?[XYZ]$', 'once')) % If end with 'X','Y','Z'
     newname=regexprep(rawname,'_?[XYZ]$','');
     alias_list = [alias_list;{newname, rawname(end)}];
     alias_list = [alias_list;{[newname,'_1_A'], rawname(end)}]; % '_1_A' suffix, special case for BOSCH
+elseif ~isempty(regexp(rawname, '_?(CA)$', 'once')) % If end with 'CA'
+    newname=regexprep(rawname,'_?(CA)$','');
+    alias_list = [alias_list;{newname, 'CA'}];
+else
 end
 alias_list = [alias_list;{[rawname,'_1_A'], 'Normal'}];

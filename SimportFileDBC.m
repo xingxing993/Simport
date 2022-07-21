@@ -5,8 +5,12 @@ classdef SimportFileDBC < SimportCANFile
     
     properties
         DataFileName
+        DataFileObject
         dbcSignalList = []
         dbcInfo
+        
+        ChannelLikely % likely the dbc file matches this channel when multiple channel exists in the data file
+
     end
     
     methods
@@ -39,16 +43,21 @@ classdef SimportFileDBC < SimportCANFile
             obj.AttachDataFile(datafile);
         end
        %% GetVar
-        function varobjs = GetVar(obj, varnames)
+        function varobjs = GetVar(obj, varnames, chnl)
+            if nargin<3
+                chnl = [];
+            end
             varnames = cellstr(varnames);
-            [~, ia] = intersect(obj.VarList, varnames);
+            [~, ia, ib] = intersect(obj.VarList, varnames);
             varobjs = obj.VarObjects(ia);
+            [~,iorigin] = sort(ib);
+            varobjs = varobjs(iorigin);
         end
         %% GetVarList
         function UpdateVarObjects(obj, varargin)
             datafileobj = varargin{1};
             varobjs = [];
-            interpmethod = {'zoh','linear'};
+            interpmethod = {'linear','zoh'};
             for i=1:numel(obj.dbcSignalList)
                 sigobj = SimportVariable(...
                     obj.dbcSignalList(i).Name,... %name
@@ -60,6 +69,8 @@ classdef SimportFileDBC < SimportCANFile
                 sigobj.UserData.Type = 'dbc Signal';
                 sigobj.UserData.Message = ['0x',dec2hex(obj.dbcSignalList(i).MsgID)];
                 sigobj.UserData.dbcInfo = obj.dbcSignalList(i);
+                sigobj.Channel = obj.ChannelLikely;
+                sigobj.UserData.Channels = datafileobj.GetChannel(obj.dbcSignalList(i).MsgID); %possible channels
                 varobjs = [varobjs; sigobj];
             end
             [varobjs.Descriptor] = deal('CAN_DBC');
@@ -74,6 +85,27 @@ classdef SimportFileDBC < SimportCANFile
             if nargin<3
                 reloadflg = false;
             end
+            if numel(channel)>1 % if channel given with vector along with 'varnames'
+                if iscellstr(channel)
+                    unqchnl = unique(channel);
+                elseif iscell(channel)
+                    [channel{cellfun('isempty', channel)}] = deal(NaN);
+                    channel = cell2mat(channel);
+                    unqchnl = unique(channel);
+                else %<channel> as numeric array
+                    unqchnl = unique(channel);
+                end
+                %group by channel and recursive call
+                for i=1:numel(unqchnl)
+                    if iscellstr(unqchnl)
+                        obj.LoadData(varnames(strcmp(channel, unqchnl{i})), reloadflg, unqchnl{i});
+                    else
+                        obj.LoadData(varnames(channel==unqchnl(i)), reloadflg, unqchnl(i));
+                    end
+                end
+                return;
+            end
+            
             varnames = cellstr(varnames);
             % first load can raw message signals involved
             canmsgidx = strncmp(varnames, '0x', 2); % split CAN raw message signals, dbc signal cannot start with number
@@ -83,7 +115,7 @@ classdef SimportFileDBC < SimportCANFile
             % first load message to prepare data
             varobjs = GetVar(obj, dbcsigs);
             varrelativemsgs = unique(arrayfun(@(v)v.UserData.Message, varobjs, 'UniformOutput', false));
-            LoadData@SimportCANFile(obj,varrelativemsgs, false, channel);
+            obj.DataFileObject.LoadData(varrelativemsgs, false, channel);
             % begin to convert message data to physical value
             fun_intel2motorola_lsbbit = @(intelpos)floor(intelpos/8)*16+7-intelpos; % convert start bit to Byte0-Bit7, and end bit to Byte7-Bit0
             fun_getmotorola_msbbit = @(lsbbit,sz) (lsbbit+sz-1)-2*(floor((lsbbit+sz-1)/8)-floor(lsbbit/8))*8;
@@ -92,7 +124,10 @@ classdef SimportFileDBC < SimportCANFile
                     continue;
                 end
                 siginfo = varobjs(i).UserData.dbcInfo;
-                msgvarobj = obj.GetVar(varobjs(i).UserData.Message);
+                msgvarobj = obj.DataFileObject.GetVar(varobjs(i).UserData.Message, channel);
+                if isempty(msgvarobj)
+                    return;
+                end
                 msgdata = uint8(msgvarobj.Data); % must be uint8 type
                 if siginfo.ByteOrder==1  % intel format, high byte MSB (seems the definitoin in the DBC format specification file is wrong)
                     lsbbit = siginfo.StartBit; % start bit is lsb for intel format
@@ -136,17 +171,32 @@ classdef SimportFileDBC < SimportCANFile
         function AttachDataFile(obj, datafile)
             obj.DataFileName = datafile;
             datafileobj = simport_filedispatcher(datafile);
+            obj.DataFileObject = datafileobj;
+            obj.MatchChannel; % try to locate the data file channel with dbc
             % manual copy properties
             obj.MsgCount = datafileobj.MsgCount;
             obj.MsgID = datafileobj.MsgID;
             obj.TimeStamp = datafileobj.TimeStamp;
             obj.DLC = datafileobj.DLC;
             obj.Data = datafileobj.Data;
+            obj.Channel = datafileobj.Channel;
             obj.StartTime = datafileobj.StartTime;
             obj.EndTime = datafileobj.EndTime;
+            obj.ChannelInfo = datafileobj.ChannelInfo;
             % merge variable objects and list
             obj.UpdateVarObjects(datafileobj);
             obj.VarList = {obj.VarObjects.Name}';
+        end
+        
+        function MatchChannel(obj)
+            datafileobj = obj.DataFileObject;
+            if datafileobj.MsgCount==0
+                return;
+            end
+            dbcmsgids = [obj.dbcInfo.Message.ID]';
+            num_samemsg = cellfun(@(chnlmsgids) numel(intersect(dbcmsgids, chnlmsgids)), datafileobj.ChannelInfo(:,2));
+            [~, chidx] = max(num_samemsg);
+            obj.ChannelLikely = datafileobj.ChannelInfo{chidx,1};
         end
     end
     

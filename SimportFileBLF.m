@@ -18,7 +18,11 @@ classdef SimportFileBLF < SimportCANFile
         end
         %% BLF File
         function LoadFile(obj)
-            [bytes,msgids,channls,timestamps]=simblfextractor(obj.FileName, 1);
+            finfo = simblfinfo(obj.FileName);
+            if isempty(finfo)
+                return;
+            end
+            [bytes,msgids,channls,timestamps]=simblfextractor(obj.FileName);
             obj.Data = bytes';
             obj.MsgID = msgids';
             obj.Channel = channls';

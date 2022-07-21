@@ -25,7 +25,7 @@ classdef SimportFileASC < SimportCANFile
             BUFLEN = 100000;
             bufcnt = BUFLEN;
             msgcnt = 0;
-            bufcell = cell(bufcnt, 12); %{time, id, dlc, 8*databytes, reserved}
+            bufcell = cell(bufcnt, 12); %{time, chnl, id, dlc, 8*databytes}
             fgetl(fid); % 1st line
             lnstr = fgetl(fid); % 2nd line
             timeformat = regexp(lnstr, 'timestamps\s+(\w+)','tokens','once');
@@ -65,9 +65,10 @@ classdef SimportFileASC < SimportCANFile
                             bufcell = [bufcell; cell(BUFLEN,size(bufcell,2))];
                         end
                         bufcell{msgcnt,1} = lncell{1}; % time stamp
-                        bufcell{msgcnt,2} = lncell{3}; % message id
-                        bufcell{msgcnt,3} = lncell{6}; % dlc
-                        bufcell(msgcnt,4:4+numel(lncell(7:end))-1) = lncell(7:end); % data bytes
+                        bufcell{msgcnt,2} = lncell{2}; % channel
+                        bufcell{msgcnt,3} = lncell{3}; % message id
+                        bufcell{msgcnt,4} = lncell{6}; % dlc
+                        bufcell(msgcnt,5:12) = lncell(7:end); % data bytes
                     end
                 end
             end
@@ -83,11 +84,12 @@ classdef SimportFileASC < SimportCANFile
             else % absolute
             end
             waitbar(0.93, hwtbar, 'Post processing...');
-            obj.MsgID = cellfun(@(idstr)h2dMsgID(strrep(idstr,'x','')), bufcell(:,2));
+            obj.Channel = cellfun(@str2double, bufcell(:,2));
+            obj.MsgID = cellfun(@(idstr)h2dMsgID(strrep(idstr,'x','')), bufcell(:,3));
             waitbar(0.94, hwtbar, 'Post processing...');
-            obj.DLC = cellfun(@(idstr)uint8(str2double(idstr)), bufcell(:,3));
+            obj.DLC = cellfun(@(idstr)uint8(str2double(idstr)), bufcell(:,4));
             waitbar(0.96, hwtbar, 'Post processing...');
-            dbytes = bufcell(:,4:11);
+            dbytes = bufcell(:,5:12);
             [dbytes{cellfun('isempty', dbytes)}] = deal('00');
             obj.Data = uint8(cellfun(@h2dXX, dbytes));
             waitbar(0.98, hwtbar, 'Post processing...');
