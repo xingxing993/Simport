@@ -68,6 +68,12 @@ end
 handles.HiliteBlocks = [];
 handles.VarTable = cell(0,3); % {name, fileidx, varobj}, an virutal column 4(channel) embedded in varobj.Channel
 handles.DataFiles = {};
+
+% addpath
+filename = mfilename("fullpath");
+[fpath, ~, ~] = fileparts(filename);
+addpath(fullfile(fpath, "\BlfLoad"));
+
 % Update handles structure
 guidata(hObject, handles);
 
