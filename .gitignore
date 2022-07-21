@@ -3,3 +3,4 @@ releases/
 *.autosave
 _demo/
 _debug/
+_document_raw/
