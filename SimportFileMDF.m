@@ -37,7 +37,7 @@ classdef SimportFileMDF < SimportFile
     end
     
     properties (Constant)
-        PRIORITIZE_BUILTIN_FUNC = false;
+        PRIORITIZE_BUILTIN_FUNC = true;
     end
     
     methods
